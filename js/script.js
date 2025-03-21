@@ -3,6 +3,38 @@ document.addEventListener('DOMContentLoaded', function() {
     initEditor();
 });
 
+
+function enhanceSceneManager(sceneManager) {
+    if (!sceneManager) {
+        console.error('SceneManager not provided to enhancer');
+        return;
+    }
+    
+    // Store the original selectObject method
+    const originalSelectObject = sceneManager.selectObject;
+    
+    // Replace with enhanced version
+    sceneManager.selectObject = function(id) {
+        // Call the original method first
+        originalSelectObject.call(this, id);
+        
+        // Update physics panel if physicsManager exists
+        if (this.physicsManager) {
+            if (id === null) {
+                this.physicsManager.onObjectSelected(null);
+            } else {
+                const objectData = this.objects.find(obj => obj.id === id);
+                if (objectData) {
+                    this.physicsManager.onObjectSelected(objectData);
+                }
+            }
+        }
+    };
+    
+    console.log('SceneManager enhanced with physics integration');
+}
+
+
 // Main initialization function
 function initEditor() {
     // Scene manager to keep track of all objects and their properties
@@ -977,6 +1009,20 @@ function initEditor() {
 
     // Create scene manager
     const sceneManager = new SceneManager();
+
+    // Create instances of other managers
+    const commandManager = new CommandManager();
+    const animationManager = new AnimationManager(sceneManager, camera, orbitControls);
+    const physicsManager = new PhysicsManager(sceneManager);
+    
+    // Connect the managers
+    sceneManager.animationManager = animationManager;
+    sceneManager.physicsManager = physicsManager;
+    sceneManager.commandManager = commandManager;
+    sceneManager.scene = scene; // Add a reference to the scene
+    
+    // Apply the enhancement to connect SceneManager and PhysicsManager
+    enhanceSceneManager(sceneManager);
 
     // Orbit controls for camera
     const orbitControls = new THREE.OrbitControls(camera, renderer.domElement);
