@@ -374,3 +374,36 @@ const Utils = {
 // Export Utils object for use in other modules
 // In browsers, this will be available as window.Utils
 window.Utils = Utils;
+
+// Function to update the scene info display
+function updateSceneInfo(message, isError = false, type = 'info') {
+    const sceneInfo = document.getElementById('scene-info');
+    if (!sceneInfo) return;
+    
+    // Remove any existing classes
+    sceneInfo.classList.remove('error', 'success', 'info', 'warning');
+    
+    // Add appropriate class based on type
+    if (isError) {
+        sceneInfo.classList.add('error');
+    } else {
+        sceneInfo.classList.add(type);
+    }
+    
+    // Set the message
+    sceneInfo.textContent = message;
+    
+    // If it's not an error, automatically clear after a short time
+    if (!isError && type !== 'error') {
+        setTimeout(() => {
+            if (sceneInfo.textContent === message) {
+                sceneInfo.textContent = 'Click on objects to select them';
+                sceneInfo.classList.remove('success', 'info', 'warning');
+                sceneInfo.classList.add('info');
+            }
+        }, 3000);
+    }
+}
+
+// Make function globally available
+window.updateSceneInfo = updateSceneInfo;

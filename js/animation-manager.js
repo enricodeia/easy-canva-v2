@@ -960,3 +960,15 @@ class AnimationManager {
         copyToClipboard(code);
     }
 }
+
+// Initialize function exposed to the window object
+function initAnimationManager(scene, camera, controls) {
+    // Create and return a new AnimationManager instance
+    const animationManager = new AnimationManager(window.sceneManager, camera, controls);
+    
+    console.log('Animation Manager initialized');
+    return animationManager;
+}
+
+// Expose the initialization function to the window
+window.initAnimationManager = initAnimationManager;

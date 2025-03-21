@@ -1,7 +1,16 @@
 // Enhanced initEditor function with animation and physics support
-function initEditor() {
-    // Scene manager to keep track of all objects and their properties
-    class EnhancedSceneManager extends SceneManager {
+let sceneManagerInstance = null;
+
+// This will be called from script.js after the base SceneManager is defined
+function initSceneManager() {
+    // Make sure SceneManager is defined globally
+    if (!window.SceneManager) {
+        console.error('SceneManager not defined globally. Make sure script.js is loaded first.');
+        return null;
+    }
+    
+    // Create the enhanced scene manager class
+    class EnhancedSceneManager extends window.SceneManager {
         constructor() {
             super();
             
@@ -884,5 +893,5 @@ enhanceSelectObjectMethod();
 // When the DOM is loaded, initialize the editor
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize editor with new features
-    window.editorInstance = initEditor();
+    window.editorInstance = initSceneManager();
 });

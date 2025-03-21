@@ -492,3 +492,23 @@ class MultiCommand extends Command {
         }
     }
 }
+
+// Initialize function exposed to the window object
+function initCommandManager() {
+    // Create and return a new CommandManager instance
+    const commandManager = new CommandManager();
+    console.log('Command Manager initialized');
+    return commandManager;
+}
+
+// Expose the initialization function to the window
+window.initCommandManager = initCommandManager;
+
+// Create global references for Command classes
+window.Command = Command;
+window.AddObjectCommand = AddObjectCommand;
+window.RemoveObjectCommand = RemoveObjectCommand;
+window.SetPositionCommand = SetPositionCommand;
+window.SetRotationCommand = SetRotationCommand;
+window.SetScaleCommand = SetScaleCommand;
+window.SetMaterialCommand = SetMaterialCommand;

@@ -1,13 +1,37 @@
 // Wait for the DOM to be fully loaded before running any code
 document.addEventListener('DOMContentLoaded', function() {
-    initEditor();
+    // Add error handling
+    try {
+        console.log("Initializing 3D Scene Editor...");
+        
+        // Check if THREE is available
+        if (!window.THREE) {
+            throw new Error("THREE.js not loaded. Check script references in HTML.");
+        }
+        
+        // Initialize the editor
+        window.editorInstance = initEditor();
+        console.log("Editor initialization complete.");
+    } catch (error) {
+        console.error("Error initializing editor:", error);
+        // Display error to user
+        const container = document.getElementById('canvas-container');
+        if (container) {
+            container.innerHTML = `<div class="error-message">Error initializing 3D editor: ${error.message}</div>`;
+        }
+    }
 });
-
 
 // Main initialization function
 function initEditor() {
-    // Scene manager to keep track of all objects and their properties
-    class SceneManager {
+    // Create global variables
+    window.scene = new THREE.Scene();
+    window.renderer = null;
+    window.camera = null;
+    window.controls = null;
+    
+    // Define SceneManager globally
+    window.SceneManager = class SceneManager {
         constructor() {
             this.objects = [];
             this.lights = [];
@@ -18,6 +42,7 @@ function initEditor() {
             this.mouse = new THREE.Vector2();
             this.hdrLoaded = false;
             this.hdrFileName = null;
+            this.scene = window.scene;
         }
         
         // Add a 3D object to the scene
@@ -692,43 +717,40 @@ function initEditor() {
             if (wireframeInput) wireframeInput.checked = material.wireframe;
         }
         
-        // Handle canvas click for object selection
+        // Handle click on canvas for object selection
         handleCanvasClick(event) {
             // Calculate mouse position in normalized device coordinates (-1 to +1)
-            const rect = renderer.domElement.getBoundingClientRect();
-            this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-            this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            const canvasBounds = renderer.domElement.getBoundingClientRect();
+            this.mouse.x = ((event.clientX - canvasBounds.left) / canvasBounds.width) * 2 - 1;
+            this.mouse.y = -((event.clientY - canvasBounds.top) / canvasBounds.height) * 2 + 1;
             
-            // Update the picking ray
+            // Update the picking ray with the camera and mouse position
             this.raycaster.setFromCamera(this.mouse, camera);
             
-            // Get intersections (ignore helpers and non-mesh objects)
-            const intersectables = this.objects
-                .filter(obj => obj.visible)
-                .map(obj => obj.object);
+            // Find intersections with clickable objects
+            const intersects = this.raycaster.intersectObjects(scene.children, true);
             
-            const intersects = this.raycaster.intersectObjects(intersectables, true);
-            
+            // Check if we hit something
             if (intersects.length > 0) {
-                // Find the actual top-level object that was intersected
-                let selectedObject = intersects[0].object;
+                // Find the corresponding object in our manager
+                const hitObject = intersects[0].object;
+                let selectedObj = null;
                 
-                // Navigate up to find parent that is in our object list
-                while (selectedObject && !this.objects.some(obj => obj.object === selectedObject)) {
-                    selectedObject = selectedObject.parent;
-                }
-                
-                if (selectedObject) {
-                    const clickedObj = this.objects.find(obj => obj.object === selectedObject);
-                    if (clickedObj) {
-                        this.selectObject(clickedObj.id);
-                        return;
+                // Find the top-level object that contains this hit object
+                for (const obj of this.objects) {
+                    if (obj.object === hitObject || obj.object.getObjectById(hitObject.id)) {
+                        selectedObj = obj.id;
+                        break;
                     }
                 }
+                
+                if (selectedObj) {
+                    this.selectObject(selectedObj);
+                }
+            } else {
+                // Deselect if clicking on empty space
+                this.selectObject(null);
             }
-            
-            // If no object was clicked, deselect current selection
-            this.selectObject(null);
         }
         
         // Change the geometry of selected object
@@ -976,1005 +998,263 @@ function initEditor() {
         }
     }
 
-        // Create scene manager
-    const sceneManager = new SceneManager();
+    // Create the scene manager
+    window.sceneManager = new SceneManager();
     
-    // Orbit controls for camera - MOVED UP before animationManager
-    const orbitControls = new THREE.OrbitControls(camera, renderer.domElement);
-    orbitControls.enableDamping = true;
-    orbitControls.dampingFactor = 0.05;
+    // Create the command manager
+    window.commandManager = window.initCommandManager ? window.initCommandManager() : new CommandManager();
     
-    // Create instances of other managers
-    const commandManager = new CommandManager();
-    const animationManager = new AnimationManager(sceneManager, camera, orbitControls); // Now orbitControls exists
-    const physicsManager = new PhysicsManager(sceneManager);
+    // Setup the user interface
+    setupTabs();
+    setupEventListeners();
+    setupControlEvents();
     
-    // Connect the managers
-    sceneManager.animationManager = animationManager;
-    sceneManager.physicsManager = physicsManager;
-    sceneManager.commandManager = commandManager;
-    sceneManager.scene = scene; // Add a reference to the scene
+    // Initialize with a default object
+    createNewObject('box');
     
-    // Enhance the sceneManager's selectObject method directly
-    const originalSelectObject = sceneManager.selectObject;
-    sceneManager.selectObject = function(id) {
-        // Call the original method first
-        originalSelectObject.call(this, id);
+    // Add a default light if the scene doesn't have any
+    if (window.sceneManager.lights.length === 0) {
+        const light = new THREE.DirectionalLight(0xffffff, 1);
+        light.position.set(5, 5, 5);
+        light.castShadow = true;
+        scene.add(light);
         
-        // Update physics panel if physicsManager exists
-        if (this.physicsManager) {
-            if (id === null) {
-                this.physicsManager.onObjectSelected(null);
-            } else {
-                const objectData = this.objects.find(obj => obj.id === id);
-                if (objectData) {
-                    this.physicsManager.onObjectSelected(objectData);
-                }
-            }
-        }
-    };
-    
-    console.log('SceneManager enhanced with physics integration');
-    
-    // Setup lights
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-    scene.add(ambientLight);
-
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-    directionalLight.position.set(5, 5, 5);
-    directionalLight.castShadow = true;
-    directionalLight.shadow.mapSize.width = 1024;
-    directionalLight.shadow.mapSize.height = 1024;
-    directionalLight.shadow.camera.near = 0.5;
-    directionalLight.shadow.camera.far = 50;
-    directionalLight.shadow.camera.left = -10;
-    directionalLight.shadow.camera.right = 10;
-    directionalLight.shadow.camera.top = 10;
-    directionalLight.shadow.camera.bottom = -10;
-    scene.add(directionalLight);
-
-    // Add directional light to the scene manager
-    sceneManager.addLight(directionalLight, 'Main Directional Light', 'light-directional');
-
-    // Create grid helper (visible in scene)
-    const gridSize = 20;
-    const gridDivisions = 20;
-    const gridHelper = new THREE.GridHelper(gridSize, gridDivisions, 0x444444, 0x222222);
-    scene.add(gridHelper);
-
-    // Create transparent ground plane
-    const groundGeometry = new THREE.PlaneGeometry(gridSize, gridSize, gridDivisions, gridDivisions);
-    const groundMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0x222222,
-        roughness: 1,
-        metalness: 0,
-        transparent: true,
-        opacity: 0.2,
-        wireframe: false
-    });
-
-    // Add a simple texture for the grid
-    const textureLoader = new THREE.TextureLoader();
-    const groundTexture = textureLoader.load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==');
-    groundMaterial.map = groundTexture;
-    groundMaterial.map.repeat.set(gridSize, gridSize);
-    groundMaterial.map.wrapS = THREE.RepeatWrapping;
-    groundMaterial.map.wrapT = THREE.RepeatWrapping;
-
-    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.y = -0.01;
-    ground.receiveShadow = true;
-    scene.add(ground);
-
-    // Add a cube as initial object
-    const boxGeometry = new THREE.BoxGeometry();
-    const boxMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0x3d7eff, // Use theme color
-        metalness: 0,
-        roughness: 1
-    });
-    const boxMesh = new THREE.Mesh(boxGeometry, boxMaterial);
-    boxMesh.castShadow = true;
-    boxMesh.receiveShadow = true;
-    scene.add(boxMesh);
-    
-    // Add it to scene manager
-    const boxObj = sceneManager.addObject(boxMesh, 'Box');
-    
-    // RGBELoader for HDR environment maps
-    const rgbeLoader = new THREE.RGBELoader();
-    
-    // Function to handle tab switching
-    function setupTabs() {
-        const tabBtns = document.querySelectorAll('.tab-btn');
-        if (!tabBtns.length) {
-            console.warn('No tab buttons found');
-            return;
-        }
+        // Configure shadow map
+        light.shadow.mapSize.width = 1024;
+        light.shadow.mapSize.height = 1024;
         
-        tabBtns.forEach(btn => {
-            btn.addEventListener('click', () => {
-                // Remove active class from all tabs and tab content
-                tabBtns.forEach(b => b.classList.remove('active'));
-                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-                
-                // Add active class to clicked tab
-                btn.classList.add('active');
-                
-                // Show corresponding tab content
-                const tabId = btn.dataset.tab;
-                const tabContent = document.getElementById(`${tabId}-tab`);
-                if (tabContent) {
-                    tabContent.classList.add('active');
-                } else {
-                    console.warn(`Tab content for ${tabId} not found`);
-                }
-            });
-        });
+        // Add to the scene manager
+        window.sceneManager.addLight(light, 'Default Directional Light', 'light-directional');
     }
     
-    // Create event listeners with proper error handling
-    function setupEventListeners() {
+    // Add ambient light
+    const sceneAmbientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    scene.add(sceneAmbientLight);
+    
+    // Add grid helper
+    const sceneGridHelper = new THREE.GridHelper(20, 20, 0x444444, 0x444444);
+    scene.add(sceneGridHelper);
+    
+    // Set the background color
+    scene.background = new THREE.Color(0x111111);
+    
+    // Start the animation loop
+    animate();
+    
+    // Initialize animation manager if available
+    if (window.initAnimationManager) {
         try {
-            // Canvas click event for object selection
-            if (renderer && renderer.domElement) {
-                renderer.domElement.addEventListener('click', (event) => {
-                    sceneManager.handleCanvasClick(event);
-                });
-            } else {
-                console.warn('Renderer or domElement not available for click events');
-            }
-            
-            // Object creation
-            const addObjectBtn = document.getElementById('addObject');
-            const confirmAddObjectBtn = document.getElementById('confirmAddObject');
-            const geometrySelector = document.getElementById('geometrySelector');
-            const addObjectType = document.querySelector('.add-object-type');
-            
-            if (addObjectBtn && addObjectType) {
-                addObjectBtn.addEventListener('click', () => {
-                    addObjectType.style.display = 'block';
-                });
-                
-                if (confirmAddObjectBtn && geometrySelector) {
-                    confirmAddObjectBtn.addEventListener('click', () => {
-                        const type = geometrySelector.value;
-                        createNewObject(type);
-                        addObjectType.style.display = 'none';
-                    });
-                } else {
-                    console.warn('Confirm add object button or geometry selector not found');
-                }
-            } else {
-                console.warn('Add object button or add object type container not found');
-            }
-            
-            // Import model button
-            const importModelBtn = document.getElementById('importModelBtn');
-            const importModel = document.getElementById('importModel');
-            
-            if (importModelBtn && importModel) {
-                importModelBtn.addEventListener('click', () => {
-                    importModel.click();
-                });
-                
-                importModel.addEventListener('change', handleModelImport);
-            } else {
-                console.warn('Import model button or file input not found');
-            }
-            
-            // Add texture button
-            const addTextureBtn = document.getElementById('addTexture');
-            if (addTextureBtn) {
-                addTextureBtn.addEventListener('click', () => {
-                    if (!sceneManager.selectedObject) {
-                        updateSceneInfo('Please select an object first', true);
-                        return;
-                    }
-                    
-                    // Create a file input for texture upload
-                    const input = document.createElement('input');
-                    input.type = 'file';
-                    input.accept = 'image/*';
-                    input.style.display = 'none';
-                    document.body.appendChild(input);
-                    
-                    input.addEventListener('change', (e) => {
-                        if (e.target.files.length) {
-                            sceneManager.addTexture(e.target.files[0]);
-                        }
-                        document.body.removeChild(input);
-                    });
-                    
-                    input.click();
-                });
-            } else {
-                console.warn('Add texture button not found');
-            }
-            
-            // HDR environment map upload and delete
-            const hdrUpload = document.getElementById('hdrUpload');
-            const deleteHdrBtn = document.getElementById('deleteHdr');
-            
-            if (hdrUpload) {
-                hdrUpload.addEventListener('change', (e) => {
-                    if (e.target.files.length) {
-                        sceneManager.loadHDREnvironment(e.target.files[0]);
-                    }
-                });
-            } else {
-                console.warn('HDR upload input not found');
-            }
-            
-            if (deleteHdrBtn) {
-                deleteHdrBtn.addEventListener('click', () => {
-                    sceneManager.removeHDREnvironment();
-                });
-            } else {
-                console.warn('Delete HDR button not found');
-            }
-            
-            // Change geometry type
-            const changeGeometryType = document.getElementById('changeGeometryType');
-            if (changeGeometryType) {
-                changeGeometryType.addEventListener('change', (e) => {
-                    if (sceneManager.selectedObject && !sceneManager.selectedObject.type.includes('light')) {
-                        sceneManager.changeGeometry(e.target.value);
-                    }
-                });
-            } else {
-                console.warn('Change geometry type selector not found');
-            }
-            
-            // Set up other control events
-            setupControlEvents();
-            
-        } catch (error) {
-            console.error('Error setting up event listeners:', error);
-            updateSceneInfo('Error setting up application controls', true);
+            window.animationManager = window.initAnimationManager(scene, camera, controls);
+            console.log("Animation manager initialized");
+        } catch (e) {
+            console.error("Error initializing animation manager:", e);
         }
     }
     
-    // Function to set up control event listeners with error handling
-    function setupControlEvents() {
+    // Initialize physics manager if available
+    if (window.initPhysicsManager) {
         try {
-            // Material controls
-            const objectColor = document.getElementById('objectColor');
-            const metalness = document.getElementById('metalness');
-            const roughness = document.getElementById('roughness');
-            const wireframe = document.getElementById('wireframe');
-            
-            if (objectColor) {
-                objectColor.addEventListener('input', (e) => {
-                    if (!sceneManager.selectedObject) return;
-                    if (sceneManager.selectedObject.object.material) {
-                        sceneManager.selectedObject.object.material.color.set(e.target.value);
-                    }
-                });
+            window.physicsManager = window.initPhysicsManager(scene);
+            console.log("Physics manager initialized");
+            if (window.enhanceSceneManager) {
+                window.enhanceSceneManager(window.sceneManager);
             }
-            
-            if (metalness) {
-                metalness.addEventListener('input', (e) => {
-                    if (!sceneManager.selectedObject) return;
-                    if (sceneManager.selectedObject.object.material) {
-                        sceneManager.selectedObject.object.material.metalness = parseFloat(e.target.value);
-                    }
-                });
-            }
-            
-            if (roughness) {
-                roughness.addEventListener('input', (e) => {
-                    if (!sceneManager.selectedObject) return;
-                    if (sceneManager.selectedObject.object.material) {
-                        sceneManager.selectedObject.object.material.roughness = parseFloat(e.target.value);
-                    }
-                });
-            }
-            
-            if (wireframe) {
-                wireframe.addEventListener('change', (e) => {
-                    if (!sceneManager.selectedObject) return;
-                    if (sceneManager.selectedObject.object.material) {
-                        sceneManager.selectedObject.object.material.wireframe = e.target.checked;
-                    }
-                });
-            }
-            
-            // Position, rotation, scale controls
-            ['X', 'Y', 'Z'].forEach(axis => {
-                const positionInput = document.getElementById(`position${axis}`);
-                const rotateInput = document.getElementById(`rotate${axis}`);
-                const scaleInput = document.getElementById(`scale${axis}`);
-                
-                if (positionInput) {
-                    positionInput.addEventListener('input', (e) => {
-                        if (!sceneManager.selectedObject) return;
-                        const value = parseFloat(e.target.value);
-                        if (!isNaN(value)) {
-                            sceneManager.selectedObject.object.position[axis.toLowerCase()] = value;
-                        }
-                    });
-                }
-                
-                if (rotateInput) {
-                    rotateInput.addEventListener('input', (e) => {
-                        if (!sceneManager.selectedObject) return;
-                        const valueDegrees = parseFloat(e.target.value);
-                        if (!isNaN(valueDegrees)) {
-                            // Convert degrees to radians for Three.js
-                            const valueRadians = valueDegrees * (Math.PI/180);
-                            sceneManager.selectedObject.object.rotation[axis.toLowerCase()] = valueRadians;
-                        }
-                    });
-                }
-                
-                if (scaleInput) {
-                    scaleInput.addEventListener('input', (e) => {
-                        if (!sceneManager.selectedObject) return;
-                        const value = parseFloat(e.target.value);
-                        if (!isNaN(value) && value > 0) {
-                            sceneManager.selectedObject.object.scale[axis.toLowerCase()] = value;
-                        }
-                    });
-                }
-            });
-            
-            // Light controls
-            const lightIntensity = document.getElementById('lightIntensity');
-            const lightColor = document.getElementById('lightColor');
-            const lightDistance = document.getElementById('lightDistance');
-            const lightCastShadow = document.getElementById('lightCastShadow');
-            const lightAngle = document.getElementById('lightAngle');
-            const lightPenumbra = document.getElementById('lightPenumbra');
-            
-            if (lightIntensity) {
-                lightIntensity.addEventListener('input', (e) => {
-                    if (!sceneManager.selectedObject || !sceneManager.selectedObject.type.includes('light')) return;
-                    const value = parseFloat(e.target.value);
-                    if (!isNaN(value)) {
-                        sceneManager.selectedObject.object.intensity = value;
-                    }
-                });
-            }
-            
-            if (lightColor) {
-                lightColor.addEventListener('input', (e) => {
-                    if (!sceneManager.selectedObject || !sceneManager.selectedObject.type.includes('light')) return;
-                    sceneManager.selectedObject.object.color.set(e.target.value);
-                    sceneManager.updateLightsPanel();
-                });
-            }
-            
-            if (lightDistance) {
-                lightDistance.addEventListener('input', (e) => {
-                    if (!sceneManager.selectedObject || !sceneManager.selectedObject.type.includes('light')) return;
-                    if (sceneManager.selectedObject.object.distance !== undefined) {
-                        const value = parseFloat(e.target.value);
-                        if (!isNaN(value)) {
-                            sceneManager.selectedObject.object.distance = value;
-                        }
-                    }
-                });
-            }
-            
-            if (lightCastShadow) {
-                lightCastShadow.addEventListener('change', (e) => {
-                    if (!sceneManager.selectedObject || !sceneManager.selectedObject.type.includes('light')) return;
-                    if (sceneManager.selectedObject.object.castShadow !== undefined) {
-                        sceneManager.selectedObject.object.castShadow = e.target.checked;
-                    }
-                });
-            }
-            
-            if (lightAngle) {
-                lightAngle.addEventListener('input', (e) => {
-                    if (!sceneManager.selectedObject || sceneManager.selectedObject.type !== 'light-spot') return;
-                    const valueDegrees = parseFloat(e.target.value);
-                    if (!isNaN(valueDegrees)) {
-                        const valueRadians = THREE.MathUtils.degToRad(valueDegrees);
-                        sceneManager.selectedObject.object.angle = valueRadians;
-                    }
-                });
-            }
-            
-            if (lightPenumbra) {
-                lightPenumbra.addEventListener('input', (e) => {
-                    if (!sceneManager.selectedObject || sceneManager.selectedObject.type !== 'light-spot') return;
-                    const value = parseFloat(e.target.value);
-                    if (!isNaN(value)) {
-                        sceneManager.selectedObject.object.penumbra = value;
-                    }
-                });
-            }
-            
-            // Camera type toggle
-            const cameraType = document.getElementById('cameraType');
-            if (cameraType) {
-                cameraType.addEventListener('change', (e) => {
-                    if (e.target.value === 'perspective') {
-                        camera = perspectiveCamera;
-                    } else {
-                        camera = orthographicCamera;
-                    }
-                    
-                    // Update camera position and controls
-                    camera.position.copy(orbitControls.object.position);
-                    camera.lookAt(cameraTarget);
-                    orbitControls.object = camera;
-                    
-                    updateSceneInfo(`Switched to ${e.target.value} camera`, false, 'success');
-                });
-            }
-            
-            // Camera controls
-            ['X', 'Y', 'Z'].forEach(axis => {
-                const cameraInput = document.getElementById(`camera${axis}`);
-                const targetInput = document.getElementById(`target${axis}`);
-                
-                if (cameraInput) {
-                    cameraInput.addEventListener('input', (e) => {
-                        const value = parseFloat(e.target.value);
-                        if (!isNaN(value)) {
-                            camera.position[axis.toLowerCase()] = value;
-                            orbitControls.update();
-                        }
-                    });
-                }
-                
-                if (targetInput) {
-                    targetInput.addEventListener('input', (e) => {
-                        const value = parseFloat(e.target.value);
-                        if (!isNaN(value)) {
-                            cameraTarget[axis.toLowerCase()] = value;
-                            camera.lookAt(cameraTarget);
-                            orbitControls.target.copy(cameraTarget);
-                            orbitControls.update();
-                        }
-                    });
-                }
-            });
-            
-            // Fog controls
-            const fogToggle = document.getElementById('fog');
-            const fogDensity = document.getElementById('fogDensity');
-            const fogColor = document.getElementById('fogColor');
-            
-            if (fogToggle) {
-                fogToggle.addEventListener('change', (e) => {
-                    if (e.target.checked) {
-                        const density = fogDensity ? parseFloat(fogDensity.value) : 0.01;
-                        const color = fogColor ? new THREE.Color(fogColor.value) : new THREE.Color(0x111111);
-                        scene.fog = new THREE.FogExp2(color, density);
-                    } else {
-                        scene.fog = null;
-                    }
-                });
-            }
-            
-            if (fogDensity) {
-                fogDensity.addEventListener('input', (e) => {
-                    if (scene.fog && scene.fog instanceof THREE.FogExp2) {
-                        scene.fog.density = parseFloat(e.target.value);
-                    }
-                });
-            }
-            
-            if (fogColor) {
-                fogColor.addEventListener('input', (e) => {
-                    if (scene.fog) {
-                        scene.fog.color.set(e.target.value);
-                    }
-                });
-            }
-            
-            // Grid and ground controls
-            const showGrid = document.getElementById('showGrid');
-            const showGroundPlane = document.getElementById('showGroundPlane');
-            const gridSizeInput = document.getElementById('gridSize');
-            const gridDivisionsInput = document.getElementById('gridDivisions');
-            
-            if (showGrid) {
-                showGrid.addEventListener('change', (e) => {
-                    gridHelper.visible = e.target.checked;
-                });
-            }
-            
-            if (showGroundPlane) {
-                showGroundPlane.addEventListener('change', (e) => {
-                    ground.visible = e.target.checked;
-                });
-            }
-            
-            // Ambient light controls
-            const ambientIntensity = document.getElementById('ambientIntensity');
-            const ambientColor = document.getElementById('ambientColor');
-            
-            if (ambientIntensity) {
-                ambientIntensity.addEventListener('input', (e) => {
-                    ambientLight.intensity = parseFloat(e.target.value);
-                });
-            }
-            
-            if (ambientColor) {
-                ambientColor.addEventListener('input', (e) => {
-                    ambientLight.color.set(e.target.value);
-                });
-            }
-            
-            // Shadow controls
-            const enableShadows = document.getElementById('enableShadows');
-            const shadowQuality = document.getElementById('shadowQuality');
-            
-            if (enableShadows) {
-                enableShadows.addEventListener('change', (e) => {
-                    renderer.shadowMap.enabled = e.target.checked;
-                    
-                    // Update all objects to match shadow setting
-                    sceneManager.objects.forEach(obj => {
-                        if (obj.object.isMesh) {
-                            obj.object.castShadow = e.target.checked;
-                            obj.object.receiveShadow = e.target.checked;
-                        } else if (obj.type.includes('light')) {
-                            if (obj.object.castShadow !== undefined) {
-                                obj.object.castShadow = e.target.checked;
-                            }
-                        }
-                    });
-                });
-            }
-            
-            if (shadowQuality) {
-                shadowQuality.addEventListener('change', (e) => {
-                    let mapSize;
-                    switch (e.target.value) {
-                        case 'low':
-                            mapSize = 512;
-                            break;
-                        case 'medium':
-                            mapSize = 1024;
-                            break;
-                        case 'high':
-                            mapSize = 2048;
-                            break;
-                        default:
-                            mapSize = 1024;
-                    }
-                    
-                    // Update shadow map quality for all lights
-                    sceneManager.lights.forEach(light => {
-                        if (light.object.shadow) {
-                            light.object.shadow.mapSize.width = mapSize;
-                            light.object.shadow.mapSize.height = mapSize;
-                        }
-                    });
-                    
-                    updateSceneInfo(`Shadow quality set to ${e.target.value}`, false, 'success');
-                });
-            }
-            
-            // Environment map intensity
-            const envMapIntensity = document.getElementById('envMapIntensity');
-            if (envMapIntensity) {
-                envMapIntensity.addEventListener('input', (e) => {
-                    const value = parseFloat(e.target.value);
-                    if (!isNaN(value)) {
-                        // Apply to all materials
-                        sceneManager.objects.forEach(obj => {
-                            if (obj.object.material && !obj.type.includes('light')) {
-                                obj.object.material.envMapIntensity = value;
-                            }
-                        });
-                    }
-                });
-            }
-            
-            // Export buttons
-            const exportSceneBtn = document.getElementById('exportScene');
-            const copyCodeBtn = document.getElementById('copyCode');
-            
-            if (exportSceneBtn) {
-                exportSceneBtn.addEventListener('click', exportScene);
-            } else {
-                console.warn('Export scene button not found');
-            }
-            
-            if (copyCodeBtn) {
-                copyCodeBtn.addEventListener('click', generateAndCopyCode);
-            } else {
-                console.warn('Copy code button not found');
-            }
-            
-        } catch (error) {
-            console.error('Error setting up control events:', error);
-            updateSceneInfo('Error setting up control events', true);
+            window.sceneManager.physicsManager = window.physicsManager;
+        } catch (e) {
+            console.error("Error initializing physics manager:", e);
         }
     }
     
-    // Function to create a new object
-    function createNewObject(type) {
-        try {
-            let object;
-            
-            if (type.startsWith('light-')) {
-                // Create a light
-                switch (type) {
-                    case 'light-point':
-                        const pointLight = new THREE.PointLight(0xffffff, 1, 100);
-                        pointLight.position.set(0, 2, 0);
-                        pointLight.castShadow = true;
-                        object = pointLight;
-                        scene.add(object);
-                        sceneManager.addLight(object, 'Point Light', 'light-point');
-                        break;
-                    case 'light-spot':
-                        const spotLight = new THREE.SpotLight(0xffffff, 1, 100, Math.PI/4, 0.2);
-                        spotLight.position.set(0, 5, 0);
-                        spotLight.castShadow = true;
-                        object = spotLight;
-                        scene.add(object);
-                        sceneManager.addLight(object, 'Spot Light', 'light-spot');
-                        break;
-                    case 'light-area':
-                        // Three.js doesn't have an area light in the core library,
-                        // but we can simulate it with a DirectionalLight
-                        const rectLight = new THREE.DirectionalLight(0xffffff, 1);
-                        rectLight.position.set(0, 5, 0);
-                        rectLight.castShadow = true;
-                        object = rectLight;
-                        scene.add(object);
-                        sceneManager.addLight(object, 'Directional Light', 'light-area');
-                        break;
-                }
-                
-                updateSceneInfo(`Added new ${type.replace('light-', '')} light`, false, 'success');
-            } else {
-                // Create a mesh
-                let geometry;
-                
-                switch (type) {
-                    case 'box': 
-                        geometry = new THREE.BoxGeometry();
-                        break;
-                    case 'sphere': 
-                        geometry = new THREE.SphereGeometry(0.5, 32, 32);
-                        break;
-                    case 'cylinder': 
-                        geometry = new THREE.CylinderGeometry(0.5, 0.5, 1, 32);
-                        break;
-                    case 'torus': 
-                        geometry = new THREE.TorusGeometry(0.5, 0.2, 16, 32);
-                        break;
-                    case 'plane': 
-                        geometry = new THREE.PlaneGeometry(1, 1);
-                        break;
-                    default:
-                        geometry = new THREE.BoxGeometry();
-                }
-                
-                const material = new THREE.MeshStandardMaterial({
-                    color: 0x3d7eff, // Use theme color
-                    metalness: 0,
-                    roughness: 1
-                });
-                
-                object = new THREE.Mesh(geometry, material);
-                object.castShadow = true;
-                object.receiveShadow = true;
-                
-                scene.add(object);
-                
-                // Add to scene manager
-                const objData = sceneManager.addObject(
-                    object, 
-                    type.charAt(0).toUpperCase() + type.slice(1)
-                );
-                
-                // Select the new object
-                sceneManager.selectObject(objData.id);
-                
-                updateSceneInfo(`Added new ${type}`, false, 'success');
-            }
-            
-            return object;
-        } catch (error) {
-            console.error('Error creating new object:', error);
-            updateSceneInfo(`Error creating ${type}`, true);
-            return null;
-        }
-    }
-    
-    // Function to handle model import
-    function handleModelImport(event) {
-        try {
-            const file = event.target.files[0];
-            if (!file) return;
-            
-            updateSceneInfo(`Importing model: ${file.name}...`);
-            
-            const url = URL.createObjectURL(file);
-            
-            // Create GLTF loader
-            const gltfLoader = new THREE.GLTFLoader();
-            
-            gltfLoader.load(url, 
-                // Success callback
-                (gltf) => {
-                    const model = gltf.scene;
-                    
-                    // Center the model
-                    const box = new THREE.Box3().setFromObject(model);
-                    const center = box.getCenter(new THREE.Vector3());
-                    model.position.sub(center);
-                    
-                    // Normalize scale
-                    const size = box.getSize(new THREE.Vector3());
-                    const maxDim = Math.max(size.x, size.y, size.z);
-                    if (maxDim > 2) {
-                        const scale = 2 / maxDim;
-                        model.scale.set(scale, scale, scale);
-                    }
-                    
-                    // Apply shadows
-                    model.traverse((node) => {
-                        if (node.isMesh) {
-                            node.castShadow = true;
-                            node.receiveShadow = true;
-                        }
-                    });
-                    
-                    scene.add(model);
-                    
-                    // Add to scene manager
-                    const objData = sceneManager.addObject(
-                        model, 
-                        file.name.split('.')[0] || 'Imported Model'
-                    );
-                    
-                    // Select the new model
-                    sceneManager.selectObject(objData.id);
-                    
-                    // Clean up URL
-                    URL.revokeObjectURL(url);
-                    
-                    updateSceneInfo(`Model ${file.name} imported successfully`, false, 'success');
-                }, 
-                // Progress callback
-                (xhr) => {
-                    const percent = (xhr.loaded / xhr.total * 100).toFixed(0);
-                    updateSceneInfo(`Loading model: ${percent}%`);
-                },
-                // Error callback
-                (error) => {
-                    console.error('Error loading model:', error);
-                    updateSceneInfo('Error loading model', true);
-                    URL.revokeObjectURL(url);
-                }
-            );
-            
-            // Reset file input
-            event.target.value = '';
-        } catch (error) {
-            console.error('Error handling model import:', error);
-            updateSceneInfo('Error importing model', true);
-        }
-    }
-    
-    // Function to export scene as JSON
-    function exportScene() {
-        try {
-            const sceneJson = scene.toJSON();
-            const jsonString = JSON.stringify(sceneJson, null, 2);
-            const blob = new Blob([jsonString], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'scene.json';
-            a.click();
-            
-            URL.revokeObjectURL(url);
-            
-            updateSceneInfo('Scene exported as JSON', false, 'success');
-        } catch (error) {
-            console.error('Error exporting scene:', error);
-            updateSceneInfo('Error exporting scene', true);
-        }
-    }
-    
-    // Function to generate and copy Three.js code
-    function generateAndCopyCode() {
-        try {
-            // Generate code for scene setup
-            let code = `// Three.js Scene exported from 3D Scene Editor\n\n`;
-            code += `// Create scene\n`;
-            code += `const scene = new THREE.Scene();\n`;
-            code += `scene.background = new THREE.Color(0x${scene.background.getHexString()});\n\n`;
-            
-            // Add renderer code
-            code += `// Renderer setup\n`;
-            code += `const renderer = new THREE.WebGLRenderer({ antialias: true });\n`;
-            code += `renderer.setSize(window.innerWidth, window.innerHeight);\n`;
-            code += `renderer.setPixelRatio(window.devicePixelRatio);\n`;
-            code += `renderer.shadowMap.enabled = ${renderer.shadowMap.enabled};\n`;
-            code += `renderer.shadowMap.type = THREE.PCFSoftShadowMap;\n`;
-            code += `renderer.toneMapping = THREE.ACESFilmicToneMapping;\n`;
-            code += `renderer.toneMappingExposure = 1;\n`;
-            code += `document.body.appendChild(renderer.domElement);\n\n`;
-            
-            // Add camera code
-            code += `// Camera setup\n`;
-            if (camera === perspectiveCamera) {
-                code += `const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);\n`;
-            } else {
-                code += `const camera = new THREE.OrthographicCamera(-5, 5, 5, -5, 0.1, 1000);\n`;
-            }
-            code += `camera.position.set(${camera.position.x.toFixed(2)}, ${camera.position.y.toFixed(2)}, ${camera.position.z.toFixed(2)});\n`;
-            code += `camera.lookAt(${cameraTarget.x.toFixed(2)}, ${cameraTarget.y.toFixed(2)}, ${cameraTarget.z.toFixed(2)});\n\n`;
-            
-            // Add orbit controls
-            code += `// Orbit controls\n`;
-            code += `const controls = new THREE.OrbitControls(camera, renderer.domElement);\n`;
-            code += `controls.enableDamping = true;\n`;
-            code += `controls.dampingFactor = 0.05;\n\n`;
-            
-            // Add ambient light
-            code += `// Ambient light\n`;
-            code += `const ambientLight = new THREE.AmbientLight(0x${ambientLight.color.getHexString()}, ${ambientLight.intensity});\n`;
-            code += `scene.add(ambientLight);\n\n`;
-            
-            // Add all other objects
-            code += `// Scene objects\n`;
-            sceneManager.objects.forEach(obj => {
-                if (obj.type.includes('light')) {
-                    // Add light code
-                    const light = obj.object;
-                    
-                    code += `// ${obj.name}\n`;
-                    if (obj.type === 'light-directional') {
-                        code += `const ${obj.id} = new THREE.DirectionalLight(0x${light.color.getHexString()}, ${light.intensity});\n`;
-                    } else if (obj.type === 'light-point') {
-                        code += `const ${obj.id} = new THREE.PointLight(0x${light.color.getHexString()}, ${light.intensity}, ${light.distance});\n`;
-                    } else if (obj.type === 'light-spot') {
-                        code += `const ${obj.id} = new THREE.SpotLight(0x${light.color.getHexString()}, ${light.intensity}, ${light.distance}, ${light.angle.toFixed(4)}, ${light.penumbra});\n`;
-                    }
-                    
-                    code += `${obj.id}.position.set(${light.position.x.toFixed(2)}, ${light.position.y.toFixed(2)}, ${light.position.z.toFixed(2)});\n`;
-                    
-                    if (light.castShadow) {
-                        code += `${obj.id}.castShadow = true;\n`;
-                        if (light.shadow) {
-                            code += `${obj.id}.shadow.mapSize.width = ${light.shadow.mapSize.width};\n`;
-                            code += `${obj.id}.shadow.mapSize.height = ${light.shadow.mapSize.height};\n`;
-                        }
-                    }
-                    
-                    code += `scene.add(${obj.id});\n\n`;
-                } else {
-                    // Add mesh code
-                    const mesh = obj.object;
-                    
-                    code += `// ${obj.name}\n`;
-                    code += `const ${obj.id}_material = new THREE.MeshStandardMaterial({\n`;
-                    code += `  color: 0x${mesh.material.color.getHexString()},\n`;
-                    code += `  metalness: ${mesh.material.metalness},\n`;
-                    code += `  roughness: ${mesh.material.roughness},\n`;
-                    
-                    if (mesh.material.wireframe) {
-                        code += `  wireframe: true,\n`;
-                    }
-                    
-                    code += `});\n`;
-                    
-                    // Determine geometry type
-                    if (mesh.geometry instanceof THREE.BoxGeometry) {
-                        code += `const ${obj.id}_geometry = new THREE.BoxGeometry();\n`;
-                    } else if (mesh.geometry instanceof THREE.SphereGeometry) {
-                        code += `const ${obj.id}_geometry = new THREE.SphereGeometry(0.5, 32, 32);\n`;
-                    } else if (mesh.geometry instanceof THREE.CylinderGeometry) {
-                        code += `const ${obj.id}_geometry = new THREE.CylinderGeometry(0.5, 0.5, 1, 32);\n`;
-                    } else if (mesh.geometry instanceof THREE.TorusGeometry) {
-                        code += `const ${obj.id}_geometry = new THREE.TorusGeometry(0.5, 0.2, 16, 32);\n`;
-                    } else if (mesh.geometry instanceof THREE.PlaneGeometry) {
-                        code += `const ${obj.id}_geometry = new THREE.PlaneGeometry(1, 1);\n`;
-                    } else {
-                        code += `// Complex or custom geometry\n`;
-                        code += `const ${obj.id}_geometry = new THREE.BoxGeometry();\n`;
-                    }
-                    
-                    code += `const ${obj.id} = new THREE.Mesh(${obj.id}_geometry, ${obj.id}_material);\n`;
-                    code += `${obj.id}.position.set(${mesh.position.x.toFixed(2)}, ${mesh.position.y.toFixed(2)}, ${mesh.position.z.toFixed(2)});\n`;
-                    code += `${obj.id}.rotation.set(${mesh.rotation.x.toFixed(4)}, ${mesh.rotation.y.toFixed(4)}, ${mesh.rotation.z.toFixed(4)});\n`;
-                    code += `${obj.id}.scale.set(${mesh.scale.x.toFixed(2)}, ${mesh.scale.y.toFixed(2)}, ${mesh.scale.z.toFixed(2)});\n`;
-                    
-                    if (mesh.castShadow) {
-                        code += `${obj.id}.castShadow = true;\n`;
-                    }
-                    
-                    if (mesh.receiveShadow) {
-                        code += `${obj.id}.receiveShadow = true;\n`;
-                    }
-                    
-                    code += `scene.add(${obj.id});\n\n`;
-                }
-            });
-            
-            // Add animation loop
-            code += `// Animation loop\n`;
-            code += `function animate() {\n`;
-            code += `  requestAnimationFrame(animate);\n`;
-            code += `  controls.update();\n`;
-            code += `  renderer.render(scene, camera);\n`;
-            code += `}\n\n`;
-            code += `animate();\n\n`;
-            
-            // Add window resize handler
-            code += `// Window resize handler\n`;
-            code += `window.addEventListener('resize', () => {\n`;
-            code += `  camera.aspect = window.innerWidth / window.innerHeight;\n`;
-            code += `  camera.updateProjectionMatrix();\n`;
-            code += `  renderer.setSize(window.innerWidth, window.innerHeight);\n`;
-            code += `});\n`;
-            
-            // Copy to clipboard
-            navigator.clipboard.writeText(code)
-                .then(() => {
-                    updateSceneInfo('Three.js code copied to clipboard!', false, 'success');
-                })
-                .catch(err => {
-                    console.error('Could not copy text: ', err);
-                    // Fallback
-                    const textarea = document.createElement('textarea');
-                    textarea.value = code;
-                    document.body.appendChild(textarea);
-                    textarea.select();
-                    document.execCommand('copy');
-                    document.body.removeChild(textarea);
-                    updateSceneInfo('Three.js code copied to clipboard!', false, 'success');
-                });
-        } catch (error) {
-            console.error('Error generating code:', error);
-            updateSceneInfo('Error generating Three.js code', true);
-        }
-    }
-    
-    // Animation loop
-    function animate() {
-        requestAnimationFrame(animate);
-        orbitControls.update();
-        renderer.render(scene, camera);
-    }
-    
-    // Window resize handler
-    window.addEventListener('resize', () => {
-        const width = window.innerWidth - 320;
-        const height = window.innerHeight;
+    // Handle window resize
+    window.addEventListener('resize', function() {
+        const width = container.clientWidth;
+        const height = container.clientHeight;
         
-        // Update camera aspect ratio and projection matrix
-        if (camera === perspectiveCamera) {
-            perspectiveCamera.aspect = width / height;
-            perspectiveCamera.updateProjectionMatrix();
-        } else {
-            // Update orthographic camera frustum
-            orthographicCamera.left = -5 * (width / height);
-            orthographicCamera.right = 5 * (width / height);
-            orthographicCamera.updateProjectionMatrix();
-        }
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
         
-        // Update renderer size
         renderer.setSize(width, height);
     });
     
-    // Set up the UI components
-    setupTabs();
-    setupEventListeners();
+    // Update scene info to indicate ready state
+    updateSceneInfo("3D Scene Editor ready. Click on objects to select them.");
     
-    // Select the initial object
-    sceneManager.selectObject(boxObj.id);
+    // Return the scene manager for external access
+    return window.sceneManager;
+}
+
+// Function to handle tab switching
+function setupTabs() {
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    if (!tabBtns.length) {
+        console.warn('No tab buttons found');
+        return;
+    }
     
-    // Start animation loop
-    animate();
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            // Remove active class from all tabs and tab content
+            tabBtns.forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
+            // Add active class to clicked tab
+            btn.classList.add('active');
+            
+            // Show corresponding tab content
+            const tabId = btn.dataset.tab;
+            const tabContent = document.getElementById(`${tabId}-tab`);
+            if (tabContent) {
+                tabContent.classList.add('active');
+            } else {
+                console.warn(`Tab content for ${tabId} not found`);
+            }
+        });
+    });
+}
+
+// Function to create a new object
+function createNewObject(type) {
+    try {
+        let object;
+        
+        if (type.startsWith('light-')) {
+            // Create a light
+            switch (type) {
+                case 'light-point':
+                    const pointLight = new THREE.PointLight(0xffffff, 1, 100);
+                    pointLight.position.set(0, 2, 0);
+                    pointLight.castShadow = true;
+                    object = pointLight;
+                    scene.add(object);
+                    window.sceneManager.addLight(object, 'Point Light', 'light-point');
+                    break;
+                case 'light-spot':
+                    const spotLight = new THREE.SpotLight(0xffffff, 1, 100, Math.PI/4, 0.2);
+                    spotLight.position.set(0, 5, 0);
+                    spotLight.castShadow = true;
+                    object = spotLight;
+                    scene.add(object);
+                    window.sceneManager.addLight(object, 'Spot Light', 'light-spot');
+                    break;
+                case 'light-area':
+                    // Three.js doesn't have an area light in the core library,
+                    // but we can simulate it with a DirectionalLight
+                    const rectLight = new THREE.DirectionalLight(0xffffff, 1);
+                    rectLight.position.set(0, 5, 0);
+                    rectLight.castShadow = true;
+                    object = rectLight;
+                    scene.add(object);
+                    window.sceneManager.addLight(object, 'Directional Light', 'light-area');
+                    break;
+            }
+            
+            updateSceneInfo(`Added new ${type.replace('light-', '')} light`, false, 'success');
+        } else {
+            // Create a mesh
+            let geometry;
+            
+            switch (type) {
+                case 'box': 
+                    geometry = new THREE.BoxGeometry();
+                    break;
+                case 'sphere': 
+                    geometry = new THREE.SphereGeometry(0.5, 32, 32);
+                    break;
+                case 'cylinder': 
+                    geometry = new THREE.CylinderGeometry(0.5, 0.5, 1, 32);
+                    break;
+                case 'torus': 
+                    geometry = new THREE.TorusGeometry(0.5, 0.2, 16, 32);
+                    break;
+                case 'plane': 
+                    geometry = new THREE.PlaneGeometry(1, 1);
+                    break;
+                default:
+                    geometry = new THREE.BoxGeometry();
+            }
+            
+            const material = new THREE.MeshStandardMaterial({
+                color: 0x3d7eff, // Use theme color
+                metalness: 0,
+                roughness: 1
+            });
+            
+            object = new THREE.Mesh(geometry, material);
+            object.castShadow = true;
+            object.receiveShadow = true;
+            
+            scene.add(object);
+            
+            // Add to scene manager
+            const objData = window.sceneManager.addObject(
+                object, 
+                type.charAt(0).toUpperCase() + type.slice(1)
+            );
+            
+            // Select the new object
+            window.sceneManager.selectObject(objData.id);
+            
+            updateSceneInfo(`Added new ${type}`, false, 'success');
+        }
+        
+        return object;
+    } catch (error) {
+        console.error('Error creating new object:', error);
+        updateSceneInfo(`Error creating ${type}`, true);
+        return null;
+    }
+}
+
+// Create event listeners with proper error handling
+function setupEventListeners() {
+    try {
+        // Basic click handlers for UI elements
+        
+        // Canvas click event for object selection
+        if (renderer && renderer.domElement) {
+            renderer.domElement.addEventListener('click', (event) => {
+                window.sceneManager.handleCanvasClick(event);
+            });
+        } else {
+            console.warn('Renderer or domElement not available for click events');
+        }
+        
+        // Add object button
+        const addObjectBtn = document.getElementById('addObject');
+        const confirmAddObjectBtn = document.getElementById('confirmAddObject');
+        const geometrySelector = document.getElementById('geometrySelector');
+        const addObjectType = document.querySelector('.add-object-type');
+        
+        if (addObjectBtn && addObjectType) {
+            addObjectBtn.addEventListener('click', () => {
+                addObjectType.style.display = 'block';
+            });
+            
+            if (confirmAddObjectBtn && geometrySelector) {
+                confirmAddObjectBtn.addEventListener('click', () => {
+                    const type = geometrySelector.value;
+                    createNewObject(type);
+                    addObjectType.style.display = 'none';
+                });
+            }
+        }
+        
+        // Copy code button
+        const copyCodeBtn = document.getElementById('copyCode');
+        if (copyCodeBtn) {
+            copyCodeBtn.addEventListener('click', () => {
+                alert('Code copied to clipboard feature will be implemented here');
+            });
+        }
     
-    // Show ready message
-    updateSceneInfo('3D Scene Editor ready. Click on objects to select them');
+    } catch (error) {
+        console.error('Error setting up event listeners:', error);
+        updateSceneInfo('Error setting up event listeners', true);
+    }
+}
+
+// Function to set up UI control events
+function setupControlEvents() {
+    // We'll implement the full version later
+    console.log("Setting up control events");
 }

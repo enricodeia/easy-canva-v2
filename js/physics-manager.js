@@ -4,7 +4,7 @@ class PhysicsManager {
     constructor(sceneManager) {
         // Store references
         this.sceneManager = sceneManager;
-        this.scene = sceneManager.scene;
+        this.scene = window.scene; // Use the global scene
         
         // Cannon.js physics world
         this.world = null;
@@ -1241,3 +1241,15 @@ class PhysicsManager {
         this.updatePhysics(delta);
     }
 }
+
+// Initialize function exposed to the window object
+function initPhysicsManager(scene) {
+    // Create and return a new PhysicsManager instance
+    const physicsManager = new PhysicsManager(window.sceneManager);
+    
+    console.log('Physics Manager initialized');
+    return physicsManager;
+}
+
+// Expose the initialization function to the window
+window.initPhysicsManager = initPhysicsManager;
