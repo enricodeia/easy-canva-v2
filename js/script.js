@@ -4,37 +4,6 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 
-function enhanceSceneManager(sceneManager) {
-    if (!sceneManager) {
-        console.error('SceneManager not provided to enhancer');
-        return;
-    }
-    
-    // Store the original selectObject method
-    const originalSelectObject = sceneManager.selectObject;
-    
-    // Replace with enhanced version
-    sceneManager.selectObject = function(id) {
-        // Call the original method first
-        originalSelectObject.call(this, id);
-        
-        // Update physics panel if physicsManager exists
-        if (this.physicsManager) {
-            if (id === null) {
-                this.physicsManager.onObjectSelected(null);
-            } else {
-                const objectData = this.objects.find(obj => obj.id === id);
-                if (objectData) {
-                    this.physicsManager.onObjectSelected(objectData);
-                }
-            }
-        }
-    };
-    
-    console.log('SceneManager enhanced with physics integration');
-}
-
-
 // Main initialization function
 function initEditor() {
     // Scene manager to keep track of all objects and their properties
