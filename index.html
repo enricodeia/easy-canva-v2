@@ -1,0 +1,246 @@
+<!-- Right sidebar for animation and physics -->
+<div id="right-sidebar">
+    <div class="sidebar-header">
+        <h2>Animation & Physics</h2>
+    </div>
+    
+    <!-- Main tabs navigation -->
+    <div class="tabs-container">
+        <div class="tabs-header">
+            <button class="tab-btn active" data-tab="animation">Animation</button>
+            <button class="tab-btn" data-tab="physics">Physics</button>
+            <button class="tab-btn" data-tab="timeline">Timeline</button>
+        </div>
+        
+        <!-- Animation Tab -->
+        <div class="tab-content active" id="animation-tab">
+            <!-- Camera Animation Section -->
+            <div class="control-group">
+                <div class="group-header">
+                    <h3>Camera Animation</h3>
+                    <div class="btn-group">
+                        <button id="addKeyframe" class="icon-btn">+ Keyframe</button>
+                        <button id="previewAnimation" class="icon-btn">Preview</button>
+                    </div>
+                </div>
+                
+                <!-- Keyframes List -->
+                <div id="keyframesPanel">
+                    <div class="keyframes-header">
+                        <span class="keyframe-time">Time</span>
+                        <span class="keyframe-position">Position</span>
+                        <span class="keyframe-target">Target</span>
+                        <span class="keyframe-controls"></span>
+                    </div>
+                    <ul id="keyframesList">
+                        <!-- Keyframes will be listed here -->
+                    </ul>
+                </div>
+                
+                <!-- Animation Settings -->
+                <div class="property">
+                    <label for="animationDuration">Duration (seconds):</label>
+                    <input type="number" id="animationDuration" min="0.1" step="0.1" value="5">
+                </div>
+                
+                <div class="property">
+                    <label for="animationEasing">Easing:</label>
+                    <select id="animationEasing">
+                        <option value="power1.inOut">Power 1 (Smooth)</option>
+                        <option value="power2.inOut">Power 2 (Smoother)</option>
+                        <option value="power3.inOut">Power 3 (Very Smooth)</option>
+                        <option value="none.none">Linear</option>
+                        <option value="elastic.out">Elastic</option>
+                        <option value="bounce.out">Bounce</option>
+                        <option value="back.inOut">Back</option>
+                    </select>
+                </div>
+                
+                <div class="property">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="loopAnimation">
+                        <label for="loopAnimation">Loop Animation</label>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Scroll Animation Section -->
+            <div class="control-group">
+                <div class="group-header">
+                    <h3>Scroll Settings</h3>
+                </div>
+                
+                <div class="property">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="enableScrollAnimation">
+                        <label for="enableScrollAnimation">Enable Scroll Animation</label>
+                    </div>
+                </div>
+                
+                <div class="property">
+                    <label for="scrollTriggerStart">Start Position (%):</label>
+                    <input type="number" id="scrollTriggerStart" min="0" max="100" step="1" value="0">
+                </div>
+                
+                <div class="property">
+                    <label for="scrollTriggerEnd">End Position (%):</label>
+                    <input type="number" id="scrollTriggerEnd" min="0" max="100" step="1" value="100">
+                </div>
+                
+                <div class="property">
+                    <label for="scrollScrubbing">Scrubbing:</label>
+                    <select id="scrollScrubbing">
+                        <option value="true">Smooth</option>
+                        <option value="false">Instant</option>
+                    </select>
+                </div>
+            </div>
+            
+            <!-- Export Options -->
+            <div class="control-group">
+                <div class="group-header">
+                    <h3>Export</h3>
+                </div>
+                
+                <div class="property">
+                    <button id="exportAnimation" class="primary-btn full-width">Export Animation Code</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Physics Tab -->
+        <div class="tab-content" id="physics-tab">
+            <!-- Global Physics Settings -->
+            <div class="control-group">
+                <div class="group-header">
+                    <h3>Physics World</h3>
+                    <div class="btn-group">
+                        <button id="togglePhysics" class="icon-btn">Start</button>
+                        <button id="resetPhysics" class="icon-btn">Reset</button>
+                    </div>
+                </div>
+                
+                <div class="property">
+                    <label>Gravity:</label>
+                    <div class="vertical-inputs">
+                        <div class="input-group">
+                            <label for="gravityX">X:</label>
+                            <input type="number" id="gravityX" step="0.1" value="0">
+                        </div>
+                        <div class="input-group">
+                            <label for="gravityY">Y:</label>
+                            <input type="number" id="gravityY" step="0.1" value="-9.8">
+                        </div>
+                        <div class="input-group">
+                            <label for="gravityZ">Z:</label>
+                            <input type="number" id="gravityZ" step="0.1" value="0">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="property">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="showPhysicsDebug">
+                        <label for="showPhysicsDebug">Show Physics Debug</label>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Object Physics Properties -->
+            <div class="control-group disabled" id="objectPhysicsProperties">
+                <div class="group-header">
+                    <h3>Object Physics</h3>
+                    <span class="selected-name">No selection</span>
+                </div>
+                
+                <div class="property">
+                    <label for="physicsType">Physics Type:</label>
+                    <select id="physicsType">
+                        <option value="static">Static</option>
+                        <option value="dynamic">Dynamic</option>
+                        <option value="kinematic">Kinematic</option>
+                    </select>
+                </div>
+                
+                <div class="property">
+                    <label for="collisionShape">Collision Shape:</label>
+                    <select id="collisionShape">
+                        <option value="auto">Auto (Based on Geometry)</option>
+                        <option value="box">Box</option>
+                        <option value="sphere">Sphere</option>
+                        <option value="cylinder">Cylinder</option>
+                        <option value="compound">Compound</option>
+                    </select>
+                </div>
+                
+                <div class="property">
+                    <label for="mass">Mass:</label>
+                    <input type="number" id="mass" min="0" step="0.1" value="1">
+                </div>
+                
+                <div class="property">
+                    <div class="vertical-inputs">
+                        <div class="input-group">
+                            <label for="friction">Friction:</label>
+                            <input type="number" id="friction" min="0" max="1" step="0.01" value="0.3">
+                        </div>
+                        <div class="input-group">
+                            <label for="restitution">Restitution:</label>
+                            <input type="number" id="restitution" min="0" max="1" step="0.01" value="0.3">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="property">
+                    <button id="applyPhysics" class="primary-btn">Apply Physics</button>
+                </div>
+            </div>
+            
+            <!-- Physics Presets -->
+            <div class="control-group">
+                <div class="group-header">
+                    <h3>Physics Presets</h3>
+                </div>
+                
+                <div class="property">
+                    <button class="preset-btn" data-preset="dropTest">Drop Test</button>
+                    <button class="preset-btn" data-preset="domino">Domino Effect</button>
+                    <button class="preset-btn" data-preset="ragdoll">Ragdoll</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Timeline Tab -->
+        <div class="tab-content" id="timeline-tab">
+            <div class="control-group">
+                <div class="group-header">
+                    <h3>Animation Timeline</h3>
+                    <div class="btn-group">
+                        <button id="playTimeline" class="icon-btn">Play</button>
+                        <button id="stopTimeline" class="icon-btn">Stop</button>
+                    </div>
+                </div>
+                
+                <div class="timeline-container">
+                    <!-- Timeline ruler -->
+                    <div class="timeline-ruler" id="timelineRuler">
+                        <!-- Time markers will be generated here -->
+                    </div>
+                    
+                    <!-- Timeline tracks -->
+                    <div class="timeline-tracks" id="timelineTracks">
+                        <!-- Tracks will be generated here -->
+                    </div>
+                    
+                    <!-- Timeline scrubber -->
+                    <div class="timeline-scrubber" id="timelineScrubber"></div>
+                </div>
+                
+                <div class="property">
+                    <label for="timelineZoom">Zoom:</label>
+                    <input type="range" id="timelineZoom" min="0.1" max="2" step="0.1" value="1">
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
