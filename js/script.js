@@ -976,12 +976,17 @@ function initEditor() {
         }
     }
 
-    // Create scene manager
+        // Create scene manager
     const sceneManager = new SceneManager();
-
+    
+    // Orbit controls for camera - MOVED UP before animationManager
+    const orbitControls = new THREE.OrbitControls(camera, renderer.domElement);
+    orbitControls.enableDamping = true;
+    orbitControls.dampingFactor = 0.05;
+    
     // Create instances of other managers
     const commandManager = new CommandManager();
-    const animationManager = new AnimationManager(sceneManager, camera, orbitControls);
+    const animationManager = new AnimationManager(sceneManager, camera, orbitControls); // Now orbitControls exists
     const physicsManager = new PhysicsManager(sceneManager);
     
     // Connect the managers
@@ -990,14 +995,27 @@ function initEditor() {
     sceneManager.commandManager = commandManager;
     sceneManager.scene = scene; // Add a reference to the scene
     
-    // Apply the enhancement to connect SceneManager and PhysicsManager
-    enhanceSceneManager(sceneManager);
-
-    // Orbit controls for camera
-    const orbitControls = new THREE.OrbitControls(camera, renderer.domElement);
-    orbitControls.enableDamping = true;
-    orbitControls.dampingFactor = 0.05;
-
+    // Enhance the sceneManager's selectObject method directly
+    const originalSelectObject = sceneManager.selectObject;
+    sceneManager.selectObject = function(id) {
+        // Call the original method first
+        originalSelectObject.call(this, id);
+        
+        // Update physics panel if physicsManager exists
+        if (this.physicsManager) {
+            if (id === null) {
+                this.physicsManager.onObjectSelected(null);
+            } else {
+                const objectData = this.objects.find(obj => obj.id === id);
+                if (objectData) {
+                    this.physicsManager.onObjectSelected(objectData);
+                }
+            }
+        }
+    };
+    
+    console.log('SceneManager enhanced with physics integration');
+    
     // Setup lights
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
     scene.add(ambientLight);
